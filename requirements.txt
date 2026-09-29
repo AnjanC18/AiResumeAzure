@@ -1,0 +1,6 @@
+Flask
+Werkzeug
+pypdf
+gunicorn
+azure-storage-blob
+azure-identity

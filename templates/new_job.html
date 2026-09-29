@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Create Job Opening{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-3">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('index') }}" class="text-decoration-none">Dashboard</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Post New Job</li>
+      </ol>
+    </nav>
+
+    <div class="card p-4 p-md-5 mb-4">
+      <div class="mb-4">
+        <h1 class="h3 fw-bold text-dark mb-1">Create Job Opening</h1>
+        <p class="text-muted">Define the position requirements, target skill set, and criteria for candidate screening.</p>
+      </div>
+
+      <!-- Quick Template Presets -->
+      <div class="p-3 bg-light rounded-3 mb-4 border">
+        <div class="d-flex align-items-center gap-2 mb-2 text-dark fw-semibold small">
+          <i class="bi bi-magic text-primary"></i> Quick Presets (Click to autofill):
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary bg-white preset-btn"
+            data-title="Senior Python Backend Developer"
+            data-dept="Engineering"
+            data-desc="We are looking for a Senior Python Developer to architect resilient REST APIs, microservices, and database systems."
+            data-skills="Python, Flask, FastAPI, SQL, PostgreSQL, Docker, Git, REST API, AWS"
+            data-exp="3.0"
+            data-edu="B.Tech, MCA, B.E">
+            🐍 Python Backend
+          </button>
+
+          <button type="button" class="btn btn-sm btn-outline-secondary bg-white preset-btn"
+            data-title="AI / ML Engineer"
+            data-dept="Data & AI"
+            data-desc="Join our AI engineering team building NLP pipelines, LLM fine-tuning, computer vision, and machine learning infrastructure."
+            data-skills="Python, Machine Learning, Deep Learning, PyTorch, NLP, SQL, Pandas, Docker"
+            data-exp="2.0"
+            data-edu="M.Tech, B.Tech, M.Sc, Ph.D">
+            🤖 AI / ML Engineer
+          </button>
+
+          <button type="button" class="btn btn-sm btn-outline-secondary bg-white preset-btn"
+            data-title="Frontend React Developer"
+            data-dept="Product"
+            data-desc="Build responsive, high-performance web user interfaces using modern React, TypeScript, and state management."
+            data-skills="React, TypeScript, JavaScript, HTML/CSS, Next.js, Git, REST API"
+            data-exp="2.0"
+            data-edu="B.Tech, BCA, B.Sc">
+            ⚛️ React Frontend
+          </button>
+
+          <button type="button" class="btn btn-sm btn-outline-secondary bg-white preset-btn"
+            data-title="DevOps & Cloud Engineer"
+            data-dept="Infrastructure"
+            data-desc="Manage CI/CD pipelines, Kubernetes clusters, and cloud infrastructure across AWS and Azure."
+            data-skills="Docker, Kubernetes, AWS, Azure, CI/CD, Git, Linux, Terraform"
+            data-exp="3.0"
+            data-edu="B.Tech, MCA">
+            ☁️ DevOps & Cloud
+          </button>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('new_job') }}">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label fw-semibold text-dark">Job Title <span class="text-danger">*</span></label>
+            <input name="title" id="jobTitle" class="form-control" placeholder="e.g. Senior Full Stack Engineer" required>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-dark">Department</label>
+            <input name="department" id="jobDept" class="form-control" placeholder="e.g. Engineering" value="Engineering">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-semibold text-dark">Job Description</label>
+            <textarea name="description" id="jobDesc" class="form-control" rows="3" placeholder="Overview of responsibilities, project scope, and team expectations..."></textarea>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-semibold text-dark">
+              Required Skills <span class="text-danger">*</span>
+              <small class="text-muted fw-normal">(Comma-separated list of skills screened by AI)</small>
+            </label>
+            <textarea name="required_skills" id="jobSkills" class="form-control" rows="2" placeholder="e.g. Python, Flask, React, SQL, Docker, REST API, Git, AWS" required></textarea>
+            <div class="form-text">
+              The AI screening engine matches aliases automatically (e.g. "PostgreSQL" matches "SQL", "JS" matches "JavaScript").
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label fw-semibold text-dark">Minimum Experience (Years)</label>
+            <div class="input-group">
+              <input name="min_experience" id="jobExp" type="number" step="0.5" min="0" value="0" class="form-control" placeholder="0">
+              <span class="input-group-text">Years</span>
+            </div>
+            <div class="form-text">Candidates with >= this value get full 100% experience points.</div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label fw-semibold text-dark">Preferred Education</label>
+            <input name="education" id="jobEdu" class="form-control" placeholder="e.g. B.Tech, MCA, M.Tech, B.E">
+            <div class="form-text">Leave blank if no strict degree requirement.</div>
+          </div>
+        </div>
+
+        <hr class="my-4">
+
+        <div class="d-flex justify-content-end gap-2">
+          <a href="{{ url_for('index') }}" class="btn btn-light px-4">Cancel</a>
+          <button type="submit" class="btn btn-primary px-4">
+            <i class="bi bi-check-lg me-1"></i> Post Job
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.preset-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      document.getElementById('jobTitle').value = button.dataset.title || '';
+      document.getElementById('jobDept').value = button.dataset.dept || 'Engineering';
+      document.getElementById('jobDesc').value = button.dataset.desc || '';
+      document.getElementById('jobSkills').value = button.dataset.skills || '';
+      document.getElementById('jobExp').value = button.dataset.exp || '0';
+      document.getElementById('jobEdu').value = button.dataset.edu || '';
+    });
+  });
+</script>
+{% endblock %}

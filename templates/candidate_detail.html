@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% block title %}{{ candidate.name }} - Screening Report{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('index') }}" class="text-decoration-none">Dashboard</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('job_detail', job_id=candidate.job_id) }}" class="text-decoration-none">{{ candidate.job_title }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ candidate.name }}</li>
+  </ol>
+</nav>
+
+<!-- Main Candidate Header -->
+<div class="card p-4 mb-4">
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center gap-4">
+    <div>
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 small fw-semibold">
+          Applied for: {{ candidate.job_title }}
+        </span>
+        <span class="status-badge status-{{ candidate.status.replace(' ', '') }}">
+          {{ candidate.status }}
+        </span>
+      </div>
+
+      <h1 class="h2 fw-bold text-dark mb-2">{{ candidate.name }}</h1>
+
+      <div class="d-flex flex-wrap gap-3 text-muted small">
+        {% if candidate.email %}
+          <div><i class="bi bi-envelope text-primary me-1"></i> <a href="mailto:{{ candidate.email }}" class="text-decoration-none text-muted">{{ candidate.email }}</a></div>
+        {% endif %}
+        {% if candidate.phone %}
+          <div><i class="bi bi-telephone text-primary me-1"></i> <a href="tel:{{ candidate.phone }}" class="text-decoration-none text-muted">{{ candidate.phone }}</a></div>
+        {% endif %}
+        <div><i class="bi bi-calendar3 text-primary me-1"></i> Screened on {{ candidate.created_at }}</div>
+      </div>
+    </div>
+
+    <!-- Match Score Display -->
+    <div class="d-flex align-items-center gap-3 bg-light p-3 rounded-4 border">
+      <div class="text-end">
+        <div class="text-muted small fw-semibold text-uppercase">Overall Match</div>
+        <div class="small text-muted">Explainable AI Score</div>
+      </div>
+      <div>
+        {% if candidate.overall_score >= 75 %}
+          <div class="badge-score score-high fs-3 fw-bold p-3 rounded-3" style="background:#dcfce7; color:#166534; border:2px solid #86efac;">
+            {{ candidate.overall_score }}%
+          </div>
+        {% elif candidate.overall_score >= 50 %}
+          <div class="badge-score score-med fs-3 fw-bold p-3 rounded-3" style="background:#fef3c7; color:#92400e; border:2px solid #fcd34d;">
+            {{ candidate.overall_score }}%
+          </div>
+        {% else %}
+          <div class="badge-score score-low fs-3 fw-bold p-3 rounded-3" style="background:#fee2e2; color:#991b1b; border:2px solid #fca5a5;">
+            {{ candidate.overall_score }}%
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Score Breakdown Cards -->
+<div class="row g-4 mb-4">
+  <!-- Skill Match (50% weight) -->
+  <div class="col-md-4">
+    <div class="card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="fw-bold text-dark"><i class="bi bi-tools text-primary me-1"></i> Skills Match</span>
+        <span class="badge bg-primary text-white">{{ candidate.skill_score }}%</span>
+      </div>
+      <div class="progress mb-3" style="height: 8px;">
+        <div class="progress-bar bg-primary" role="progressbar" style="width: {{ candidate.skill_score }}%;"></div>
+      </div>
+      <p class="text-muted small mb-0">Weight: <strong>50%</strong> of overall score. Calculated by matching required skills against detected candidate skills and verified synonyms.</p>
+    </div>
+  </div>
+
+  <!-- Experience Match (25% weight) -->
+  <div class="col-md-4">
+    <div class="card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="fw-bold text-dark"><i class="bi bi-clock-history text-info me-1"></i> Experience</span>
+        <span class="badge bg-info text-white">{{ candidate.experience_score }}%</span>
+      </div>
+      <div class="progress mb-3" style="height: 8px;">
+        <div class="progress-bar bg-info" role="progressbar" style="width: {{ candidate.experience_score }}%;"></div>
+      </div>
+      <div class="small mb-1">
+        Detected: <strong>{{ candidate.experience }} Years</strong> (Required: {{ candidate.job_min_experience }} Years)
+      </div>
+      <p class="text-muted small mb-0">Weight: <strong>25%</strong> of overall score.</p>
+    </div>
+  </div>
+
+  <!-- Education Match (25% weight) -->
+  <div class="col-md-4">
+    <div class="card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="fw-bold text-dark"><i class="bi bi-mortarboard-fill text-success me-1"></i> Education</span>
+        <span class="badge bg-success text-white">{{ candidate.education_score }}%</span>
+      </div>
+      <div class="progress mb-3" style="height: 8px;">
+        <div class="progress-bar bg-success" role="progressbar" style="width: {{ candidate.education_score }}%;"></div>
+      </div>
+      <div class="small mb-1">
+        Detected: <strong>{{ candidate.education or 'None specified' }}</strong>
+      </div>
+      <p class="text-muted small mb-0">Weight: <strong>25%</strong> of overall score.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Detailed Analysis & Skills Comparison -->
+<div class="row g-4 mb-4">
+  <!-- Matched vs Missing Skills -->
+  <div class="col-lg-6">
+    <div class="card p-4 h-100">
+      <h3 class="h5 fw-bold text-dark mb-3">
+        <i class="bi bi-check-all text-success me-1"></i> Matched Skills
+      </h3>
+      {% if candidate.matched_skills %}
+        <div class="d-flex flex-wrap gap-2 mb-4">
+          {% for skill in candidate.matched_skills.split(',') %}
+            <span class="badge-matched py-1.5 px-3">
+              <i class="bi bi-check-circle-fill"></i> {{ skill.strip() }}
+            </span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-muted small mb-4">No required skills matched directly from the resume.</p>
+      {% endif %}
+
+      <h3 class="h5 fw-bold text-dark mb-3 pt-3 border-top">
+        <i class="bi bi-exclamation-triangle text-danger me-1"></i> Missing Required Skills
+      </h3>
+      {% if candidate.missing_skills %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for skill in candidate.missing_skills.split(',') %}
+            <span class="badge-missing py-1.5 px-3">
+              <i class="bi bi-x-circle-fill"></i> {{ skill.strip() }}
+            </span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-success small fw-semibold"><i class="bi bi-check2-all"></i> All required skills were found in candidate resume!</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Profile & All Detected Skills -->
+  <div class="col-lg-6">
+    <div class="card p-4 h-100">
+      <h3 class="h5 fw-bold text-dark mb-3">
+        <i class="bi bi-person-badge text-primary me-1"></i> Extracted Candidate Profile
+      </h3>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-borderless mb-3">
+          <tbody>
+            <tr>
+              <td class="text-muted" style="width: 35%;">Total Experience</td>
+              <td class="fw-bold text-dark">{{ candidate.experience }} Years</td>
+            </tr>
+            <tr>
+              <td class="text-muted">Education Degrees</td>
+              <td class="fw-bold text-dark">{{ candidate.education or 'Not detected' }}</td>
+            </tr>
+            <tr>
+              <td class="text-muted">Resume Document</td>
+              <td>
+                {% if candidate.resume_filename %}
+                  <a href="{{ url_for('view_resume', filename=candidate.resume_filename) }}" target="_blank" class="btn btn-sm btn-outline-danger py-0 px-2">
+                    <i class="bi bi-file-pdf"></i> View Original PDF
+                  </a>
+                {% else %}
+                  <span class="text-muted">N/A</span>
+                {% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="fw-semibold text-dark small mb-2">All Detected Skills on Resume:</div>
+      <div class="d-flex flex-wrap gap-1.5">
+        {% if candidate.skills %}
+          {% for skill in candidate.skills.split(',') %}
+            <span class="badge-skill">{{ skill.strip() }}</span>
+          {% endfor %}
+        {% else %}
+          <span class="text-muted small">No specific technical skills extracted.</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recruiter Action Decision Center -->
+<div class="card p-4 mb-4 bg-light border">
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+    <div>
+      <h3 class="h5 fw-bold text-dark mb-1">
+        <i class="bi bi-clipboard2-check text-primary me-1"></i> Recruiter Status Decision
+      </h3>
+      <p class="text-muted small mb-0">Update the candidate pipeline status to notify the hiring team and track progress.</p>
+    </div>
+
+    <form method="post" action="{{ url_for('candidate_status', candidate_id=candidate.id) }}" class="d-flex flex-wrap gap-2">
+      <button name="status" value="Shortlisted" class="btn btn-success d-flex align-items-center gap-1.5">
+        <i class="bi bi-check2-circle"></i> Shortlist
+      </button>
+      <button name="status" value="Interview" class="btn btn-primary d-flex align-items-center gap-1.5">
+        <i class="bi bi-calendar-event"></i> Schedule Interview
+      </button>
+      <button name="status" value="Under Review" class="btn btn-warning text-dark d-flex align-items-center gap-1.5">
+        <i class="bi bi-hourglass-split"></i> Under Review
+      </button>
+      <button name="status" value="Rejected" class="btn btn-danger d-flex align-items-center gap-1.5">
+        <i class="bi bi-x-circle"></i> Reject
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- Extracted Text Viewer -->
+<div class="card p-4 mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="h5 fw-bold text-dark mb-0">
+      <i class="bi bi-file-text text-secondary me-1"></i> Raw Extracted Text from PDF
+    </h3>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#rawTextCollapse">
+      Toggle Text View
+    </button>
+  </div>
+  <div class="collapse show" id="rawTextCollapse">
+    <div class="bg-light p-3 rounded-3 border font-monospace text-muted small" style="white-space: pre-wrap; max-height: 350px; overflow-y: auto;">
+      {{ candidate.extracted_text or 'No raw text available.' }}
+    </div>
+  </div>
+</div>
+
+<!-- Danger Zone -->
+<div class="d-flex justify-content-between align-items-center pt-3 border-top">
+  <a href="{{ url_for('job_detail', job_id=candidate.job_id) }}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i> Back to Job Candidates
+  </a>
+  <form method="post" action="{{ url_for('delete_candidate', candidate_id=candidate.id) }}" onsubmit="return confirm('Permanently delete this candidate?');">
+    <button type="submit" class="btn btn-outline-danger btn-sm">
+      <i class="bi bi-trash me-1"></i> Delete Candidate Record
+    </button>
+  </form>
+</div>
+{% endblock %}
