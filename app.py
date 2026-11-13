@@ -1,7 +1,8 @@
 import os
 import re
-import sqlite3
 import time
+import io
+import html
 from flask import (
     Flask,
     render_template,
@@ -9,22 +10,36 @@ from flask import (
     redirect,
     url_for,
     flash,
-    send_from_directory,
+    send_file,
     jsonify,
     abort
 )
+from markupsafe import Markup
 from werkzeug.utils import secure_filename
 from pypdf import PdfReader
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-DB_PATH = os.path.join(BASE_DIR, "resume_screening.db")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# Azure Cloud Architecture Modules
+from config import Config
+from db import get_db, init_db
+from storage import storage_service
+from ai_matcher import semantic_matcher
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me-12345")
-ALLOWED_EXTENSIONS = {"pdf"}
+app.secret_key = Config.SECRET_KEY
+ALLOWED_EXTENSIONS = Config.ALLOWED_EXTENSIONS
 
+
+@app.context_processor
+def inject_cloud_context():
+    """Injects live Azure Cloud Status into every Jinja2 template."""
+    return {
+        "cloud_status": Config.get_cloud_status()
+    }
+
+
+# ==============================================================================
+# Skill Aliases & Heuristic Taxonomy
+# ==============================================================================
 SKILL_ALIASES = {
     "Python": ["python", "py", "python3"],
     "Java": ["java", "core java", "j2ee"],
@@ -58,7 +73,7 @@ SKILL_ALIASES = {
     "Docker": ["docker", "containerization", "dockerfile", "docker-compose"],
     "Kubernetes": ["kubernetes", "k8s"],
     "AWS": ["aws", "amazon web services", "ec2", "s3", "lambda", "rds", "cloudformation", "iam"],
-    "Azure": ["azure", "microsoft azure", "azure devops", "blob storage", "azure functions"],
+    "Azure": ["azure", "microsoft azure", "azure devops", "blob storage", "azure functions", "azure sql"],
     "GCP": ["gcp", "google cloud", "google cloud platform", "bigquery"],
     "CI/CD": ["ci/cd", "continuous integration", "continuous deployment", "jenkins", "github actions", "gitlab ci"],
     "Linux": ["linux", "ubuntu", "centos", "redhat", "bash", "shell scripting"],
@@ -76,6 +91,96 @@ SKILL_ALIASES = {
     "Microservices": ["microservices", "microservice architecture", "distributed systems"],
 }
 
+
+URL_OR_EMAIL_REGEX = re.compile(
+    r'(https?://[^\s<>"\']+|www\.[^\s<>"\']+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|(?:github|linkedin|gitlab|bitbucket)\.com/[^\s<>"\']+)'
+)
+
+
+@app.template_filter("highlight_resume_skills")
+def highlight_resume_skills(text, skills_str="", matched_skills_str=""):
+    """
+    Highlights detected skills and matched skills in the raw resume text.
+    - URLs and email addresses are preserved as clean links and NOT highlighted as skills.
+    - Matched job requirements are highlighted in green (.highlight-matched)
+    - Other detected candidate skills are highlighted in indigo (.highlight-extracted)
+    """
+    if not text:
+        return ""
+
+    candidate_skills = [s.strip() for s in (skills_str or "").split(",") if s.strip()]
+    matched_skills = [s.strip().lower() for s in (matched_skills_str or "").split(",") if s.strip()]
+
+    terms_map = {}
+    for skill in candidate_skills:
+        skill_lower = skill.lower()
+        is_matched = (skill_lower in matched_skills) or any(
+            m == skill_lower or m in skill_lower or skill_lower in m for m in matched_skills
+        )
+        terms_map[skill_lower] = is_matched
+
+        # Add all aliases for canonical skill
+        for canonical, aliases in SKILL_ALIASES.items():
+            if canonical.lower() == skill_lower or skill_lower in [a.lower() for a in aliases]:
+                for alias in aliases:
+                    if alias.lower() not in terms_map:
+                        terms_map[alias.lower()] = is_matched
+                terms_map[canonical.lower()] = is_matched
+
+    # Split text into alternating (normal_text, url_or_email) parts
+    parts = URL_OR_EMAIL_REGEX.split(text)
+
+    sorted_terms = sorted(terms_map.keys(), key=lambda t: len(t), reverse=True) if terms_map else []
+    if sorted_terms:
+        skill_pattern = re.compile(
+            r"(?i)(?<![a-zA-Z0-9_@])("
+            + "|".join(re.escape(t) for t in sorted_terms)
+            + r")(?![a-zA-Z0-9_@])"
+        )
+    else:
+        skill_pattern = None
+
+    def replacer(match):
+        token = match.group(1)
+        token_lower = token.lower()
+        is_matched = terms_map.get(token_lower, False)
+
+        # Fallback check against matched skills
+        if not is_matched:
+            for canonical, aliases in SKILL_ALIASES.items():
+                if token_lower == canonical.lower() or token_lower in [a.lower() for a in aliases]:
+                    if canonical.lower() in matched_skills or any(m in [a.lower() for a in aliases] for m in matched_skills):
+                        is_matched = True
+                        break
+
+        if is_matched:
+            return f'<mark class="highlight-matched" title="Matched Job Requirement: {html.escape(token)}">{token}</mark>'
+        else:
+            return f'<mark class="highlight-extracted" title="Detected Skill: {html.escape(token)}">{token}</mark>'
+
+    result = []
+    for i, part in enumerate(parts):
+        if not part:
+            continue
+        # Odd index represents a matched URL or email address
+        if i % 2 == 1:
+            escaped_part = html.escape(part)
+            if "@" in part and not part.startswith("http"):
+                href = f"mailto:{escaped_part}"
+            elif part.startswith("http://") or part.startswith("https://"):
+                href = escaped_part
+            else:
+                href = f"https://{escaped_part}"
+            result.append(f'<a href="{href}" target="_blank" class="text-primary text-decoration-underline" style="word-break: break-all;">{escaped_part}</a>')
+        else:
+            escaped_text = html.escape(part)
+            if skill_pattern:
+                escaped_text = skill_pattern.sub(replacer, escaped_text)
+            result.append(escaped_text)
+
+    return Markup("".join(result))
+
+
 EDUCATION_PATTERNS = [
     (r"\b(ph\.?d|doctorate|doctor of philosophy)\b", "Ph.D"),
     (r"\b(m\.?tech|master of technology|m\.?e|master of engineering)\b", "M.Tech"),
@@ -91,57 +196,14 @@ EDUCATION_PATTERNS = [
     (r"\b(diploma)\b", "Diploma"),
 ]
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
-
-def init_db():
-    conn = get_db()
-    conn.executescript("""
-    CREATE TABLE IF NOT EXISTS jobs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        department TEXT DEFAULT 'Engineering',
-        description TEXT,
-        required_skills TEXT NOT NULL,
-        min_experience REAL DEFAULT 0,
-        education TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS candidates (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        job_id INTEGER NOT NULL,
-        name TEXT,
-        email TEXT,
-        phone TEXT,
-        resume_filename TEXT NOT NULL,
-        extracted_text TEXT,
-        skills TEXT,
-        education TEXT,
-        experience REAL DEFAULT 0,
-        skill_score REAL DEFAULT 0,
-        experience_score REAL DEFAULT 0,
-        education_score REAL DEFAULT 0,
-        overall_score REAL DEFAULT 0,
-        matched_skills TEXT,
-        missing_skills TEXT,
-        status TEXT DEFAULT 'Under Review',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
-    );
-    """)
-    conn.commit()
-    conn.close()
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def extract_pdf_text(path):
+
+def extract_pdf_text(path_or_stream):
     try:
-        reader = PdfReader(path)
+        reader = PdfReader(path_or_stream)
         extracted = []
         for page in reader.pages:
             t = page.extract_text()
@@ -149,12 +211,14 @@ def extract_pdf_text(path):
                 extracted.append(t)
         return "\n".join(extracted)
     except Exception as e:
-        print(f"Error reading PDF {path}: {e}")
+        print(f"Error reading PDF: {e}")
         return ""
+
 
 def extract_email(text):
     match = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
     return match.group(0).lower() if match else ""
+
 
 def extract_phone(text):
     patterns = [
@@ -169,6 +233,7 @@ def extract_phone(text):
             if len(digits) >= 10:
                 return clean
     return ""
+
 
 def extract_name(text):
     ignore_words = {
@@ -191,6 +256,7 @@ def extract_name(text):
             return first_clean[:50].title()
     return "Candidate"
 
+
 def extract_experience(text):
     patterns = [
         r"(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:experience|exp|relevant\s+experience)",
@@ -210,6 +276,7 @@ def extract_experience(text):
                 pass
     return max(values) if values else 0.0
 
+
 def extract_education(text):
     lower = text.lower()
     found = []
@@ -219,21 +286,28 @@ def extract_education(text):
                 found.append(label)
     return ", ".join(found)
 
+
 def extract_skills(text, required_skills=None):
-    lower = text.lower()
+    # Strip URLs, web domains, and email addresses so profile links (e.g. https://github.com/username)
+    # do not falsely trigger skill detection.
+    cleaned_text = re.sub(
+        r'https?://\S+|www\.\S+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|(?:github|linkedin|gitlab|bitbucket)\.com/\S+',
+        ' ',
+        text
+    )
+    lower = cleaned_text.lower()
     found = []
     
     # 1. Check configured aliases
     for canonical, aliases in SKILL_ALIASES.items():
         for alias in aliases:
-            # Match whole words or boundary
             pattern = r"(?<![a-zA-Z0-9])" + re.escape(alias.lower()) + r"(?![a-zA-Z0-9])"
             if re.search(pattern, lower):
                 if canonical not in found:
                     found.append(canonical)
                 break
                 
-    # 2. Dynamic check for any custom required skills
+    # 2. Dynamic check for custom required skills
     if required_skills:
         for req in required_skills:
             if not req.strip():
@@ -241,11 +315,11 @@ def extract_skills(text, required_skills=None):
             req_clean = req.strip()
             pattern = r"(?<![a-zA-Z0-9])" + re.escape(req_clean.lower()) + r"(?![a-zA-Z0-9])"
             if re.search(pattern, lower):
-                # Check if already added (case-insensitive)
                 if not any(f.lower() == req_clean.lower() for f in found):
                     found.append(req_clean.title())
                     
     return found
+
 
 def parse_required_skills(raw):
     parts = re.split(r"[,\n;]+", raw or "")
@@ -256,7 +330,8 @@ def parse_required_skills(raw):
             clean.append(s)
     return clean
 
-def score_candidate(required_skills, candidate_skills, candidate_exp, min_exp, required_education, candidate_education):
+
+def score_candidate(required_skills, candidate_skills, candidate_exp, min_exp, required_education, candidate_education, semantic_score=0.0):
     req_list = [s.strip() for s in required_skills if s.strip()]
     cand_list = [s.strip() for s in candidate_skills if s.strip()]
     
@@ -267,7 +342,7 @@ def score_candidate(required_skills, candidate_skills, candidate_exp, min_exp, r
         is_matched = False
         req_lower = req.lower()
         
-        # 1. Direct match with candidate skills
+        # 1. Direct match
         for cand in cand_list:
             cand_lower = cand.lower()
             if req_lower == cand_lower or req_lower in cand_lower or cand_lower in req_lower:
@@ -278,7 +353,6 @@ def score_candidate(required_skills, candidate_skills, candidate_exp, min_exp, r
         if not is_matched:
             for canonical, aliases in SKILL_ALIASES.items():
                 if req_lower == canonical.lower() or req_lower in aliases:
-                    # check if any alias is in cand_list
                     if any(c.lower() == canonical.lower() or c.lower() in aliases for c in cand_list):
                         is_matched = True
                         break
@@ -316,20 +390,27 @@ def score_candidate(required_skills, candidate_skills, candidate_exp, min_exp, r
                 break
         edu_score = 100.0 if has_match else 0.0
         
-    overall = round(skill_score * 0.50 + exp_score * 0.25 + edu_score * 0.25, 1)
-    return sorted(matched), sorted(missing), round(skill_score, 1), round(exp_score, 1), round(edu_score, 1), overall
+    # Explainable Composite Score: 
+    # Skill (40%) + Semantic AI (20%) + Experience (20%) + Education (20%)
+    overall = round(skill_score * 0.40 + semantic_score * 0.20 + exp_score * 0.20 + edu_score * 0.20, 1)
+    return sorted(matched), sorted(missing), round(skill_score, 1), round(exp_score, 1), round(edu_score, 1), round(semantic_score, 1), overall
+
+
+# ==============================================================================
+# Web Routes
+# ==============================================================================
 
 @app.route("/")
 def index():
     conn = get_db()
     jobs = conn.execute("""
-        SELECT j.*, 
+        SELECT j.id, j.title, j.department, j.description, j.required_skills, j.min_experience, j.education, j.created_at,
                COUNT(c.id) AS candidate_count,
                AVG(c.overall_score) AS avg_score,
                SUM(CASE WHEN c.status = 'Shortlisted' THEN 1 ELSE 0 END) AS shortlisted_count
         FROM jobs j
         LEFT JOIN candidates c ON j.id = c.job_id
-        GROUP BY j.id
+        GROUP BY j.id, j.title, j.department, j.description, j.required_skills, j.min_experience, j.education, j.created_at
         ORDER BY j.id DESC
     """).fetchall()
     
@@ -343,6 +424,7 @@ def index():
     
     conn.close()
     return render_template("index.html", jobs=jobs, stats=stats)
+
 
 @app.route("/jobs/new", methods=["GET", "POST"])
 def new_job():
@@ -359,17 +441,15 @@ def new_job():
             return redirect(url_for("new_job"))
             
         conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
+        job_id = conn.execute_insert(
             "INSERT INTO jobs(title, department, description, required_skills, min_experience, education) VALUES(?,?,?,?,?,?)",
             (title, department, description, skills, min_exp, education)
         )
-        job_id = cursor.lastrowid
-        conn.commit()
         conn.close()
-        flash(f"Job posting '{title}' created successfully!", "success")
+        flash(f"Job opening '{title}' created successfully!", "success")
         return redirect(url_for("job_detail", job_id=job_id))
     return render_template("new_job.html")
+
 
 @app.route("/jobs/<int:job_id>")
 def job_detail(job_id):
@@ -407,7 +487,6 @@ def job_detail(job_id):
         
     candidates = conn.execute(query, params).fetchall()
     
-    # Summary stats for this job
     job_stats = conn.execute("""
         SELECT 
             COUNT(*) AS total,
@@ -429,6 +508,7 @@ def job_detail(job_id):
         search_q=search_q
     )
 
+
 @app.route("/jobs/<int:job_id>/upload", methods=["POST"])
 def upload_resume(job_id):
     conn = get_db()
@@ -447,6 +527,7 @@ def upload_resume(job_id):
     required_skills = parse_required_skills(job["required_skills"])
     min_experience = float(job["min_experience"] or 0)
     required_education = job["education"] or ""
+    job_desc_context = f"{job['title']} {job['description'] or ''} Required Skills: {job['required_skills']}"
 
     uploaded_count = 0
     errors = []
@@ -460,14 +541,16 @@ def upload_resume(job_id):
             
         original_name = secure_filename(file.filename)
         unique_name = f"{job_id}_{int(time.time())}_{original_name}"
-        save_path = os.path.join(UPLOAD_DIR, unique_name)
         
         try:
-            file.save(save_path)
-            extracted_text = extract_pdf_text(save_path)
+            # Stage 2: Save to Azure Blob Storage (or local storage fallback)
+            saved_name, blob_url, storage_type = storage_service.save_resume(file, unique_name)
+            
+            # Extract PDF Text
+            local_path = os.path.join(Config.UPLOAD_DIR, unique_name)
+            extracted_text = extract_pdf_text(local_path)
             
             if not extracted_text.strip():
-                # Text was empty, maybe image-based PDF or corrupted
                 extracted_text = f"Candidate Resume ({original_name})"
                 
             name = extract_name(extracted_text)
@@ -477,55 +560,57 @@ def upload_resume(job_id):
             education = extract_education(extracted_text)
             skills = extract_skills(extracted_text, required_skills)
             
-            matched, missing, skill_score, exp_score, edu_score, overall = score_candidate(
-                required_skills, skills, experience, min_experience, required_education, education
+            # Stage 4: Azure AI / Semantic Similarity Matching
+            semantic_score, engine_name, sem_explanation = semantic_matcher.compute_similarity(
+                job_desc_context, extracted_text
             )
             
-            conn.execute("""
+            matched, missing, skill_score, exp_score, edu_score, sem_score, overall = score_candidate(
+                required_skills, skills, experience, min_experience, required_education, education, semantic_score
+            )
+            
+            # Stage 1: Write to Azure SQL Database (or local SQLite)
+            conn.execute_insert("""
                 INSERT INTO candidates (
-                    job_id, name, email, phone, resume_filename, extracted_text, 
+                    job_id, name, email, phone, resume_filename, resume_blob_url, extracted_text, 
                     skills, education, experience, skill_score, experience_score, 
-                    education_score, overall_score, matched_skills, missing_skills, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    education_score, semantic_score, overall_score, matched_skills, missing_skills, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                job_id, name, email, phone, unique_name, extracted_text,
+                job_id, name, email, phone, unique_name, blob_url or "", extracted_text,
                 ", ".join(skills), education, experience,
-                skill_score, exp_score, edu_score, overall,
+                skill_score, exp_score, edu_score, sem_score, overall,
                 ", ".join(matched), ", ".join(missing), "Under Review"
             ))
             uploaded_count += 1
         except Exception as exc:
             errors.append(f"{original_name}: {exc}")
 
-    conn.commit()
     conn.close()
 
     if uploaded_count > 0:
-        flash(f"Successfully processed {uploaded_count} resume(s) with AI screening!", "success")
+        flash(f"Processed {uploaded_count} resume(s) with Azure Cloud AI Screening!", "success")
     if errors:
         for err in errors:
             flash(f"Error: {err}", "danger")
 
     return redirect(url_for("job_detail", job_id=job_id))
 
+
 @app.route("/jobs/<int:job_id>/delete", methods=["POST"])
 def delete_job(job_id):
     conn = get_db()
-    # Get candidate resume files to remove them
     candidates = conn.execute("SELECT resume_filename FROM candidates WHERE job_id = ?", (job_id,)).fetchall()
     for c in candidates:
-        filepath = os.path.join(UPLOAD_DIR, c["resume_filename"])
-        if os.path.exists(filepath):
-            try:
-                os.remove(filepath)
-            except OSError:
-                pass
+        storage_service.delete_resume(c["resume_filename"])
+        
     conn.execute("DELETE FROM candidates WHERE job_id = ?", (job_id,))
     conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
     conn.commit()
     conn.close()
-    flash("Job and associated candidates deleted successfully.", "info")
+    flash("Job requisition and candidate records deleted successfully.", "info")
     return redirect(url_for("index"))
+
 
 @app.route("/candidates/<int:candidate_id>")
 def candidate_detail(candidate_id):
@@ -546,6 +631,7 @@ def candidate_detail(candidate_id):
         
     return render_template("candidate_detail.html", candidate=candidate)
 
+
 @app.route("/candidates/<int:candidate_id>/status", methods=["POST"])
 def candidate_status(candidate_id):
     status = request.form.get("status", "Under Review")
@@ -562,18 +648,14 @@ def candidate_status(candidate_id):
     flash(f"Candidate status updated to '{status}'.", "success")
     return redirect(url_for("candidate_detail", candidate_id=candidate_id))
 
+
 @app.route("/candidates/<int:candidate_id>/delete", methods=["POST"])
 def delete_candidate(candidate_id):
     conn = get_db()
     candidate = conn.execute("SELECT job_id, resume_filename FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
     if candidate:
         job_id = candidate["job_id"]
-        filepath = os.path.join(UPLOAD_DIR, candidate["resume_filename"])
-        if os.path.exists(filepath):
-            try:
-                os.remove(filepath)
-            except OSError:
-                pass
+        storage_service.delete_resume(candidate["resume_filename"])
         conn.execute("DELETE FROM candidates WHERE id = ?", (candidate_id,))
         conn.commit()
         conn.close()
@@ -582,17 +664,36 @@ def delete_candidate(candidate_id):
     conn.close()
     return redirect(url_for("index"))
 
+
 @app.route("/uploads/<path:filename>")
 def view_resume(filename):
-    return send_from_directory(UPLOAD_DIR, filename)
+    """Serves resume from Azure Blob Storage or local storage fallback."""
+    raw_bytes = storage_service.get_resume_bytes(filename)
+    if raw_bytes:
+        return send_file(
+            io.BytesIO(raw_bytes),
+            mimetype="application/pdf",
+            as_attachment=False,
+            download_name=filename
+        )
+    abort(404)
+
+
+@app.route("/api/cloud-status")
+def api_cloud_status():
+    """Returns the live deployment status of all 5 Azure architecture stages."""
+    return jsonify({
+        "status": "operational",
+        "stages": Config.get_cloud_status()
+    })
+
 
 @app.route("/seed-demo", methods=["POST"])
 def seed_demo_data():
     conn = get_db()
     
     # 1. Job 1: Senior Full Stack Python Developer
-    cur = conn.cursor()
-    cur.execute("""
+    job1_id = conn.execute_insert("""
         INSERT INTO jobs (title, department, description, required_skills, min_experience, education)
         VALUES (?, ?, ?, ?, ?, ?)
     """, (
@@ -603,10 +704,9 @@ def seed_demo_data():
         3.0,
         "B.Tech, MCA, B.E"
     ))
-    job1_id = cur.lastrowid
     
     # 2. Job 2: AI / ML Engineer
-    cur.execute("""
+    job2_id = conn.execute_insert("""
         INSERT INTO jobs (title, department, description, required_skills, min_experience, education)
         VALUES (?, ?, ?, ?, ?, ?)
     """, (
@@ -617,7 +717,6 @@ def seed_demo_data():
         2.0,
         "M.Tech, B.Tech, M.Sc, Ph.D"
     ))
-    job2_id = cur.lastrowid
     
     # Sample candidates for Job 1
     sample_candidates_job1 = [
@@ -630,9 +729,10 @@ def seed_demo_data():
             "education": "B.Tech",
             "experience": 4.5,
             "skill_score": 100.0,
+            "semantic_score": 96.5,
             "exp_score": 100.0,
             "edu_score": 100.0,
-            "overall_score": 100.0,
+            "overall_score": 99.3,
             "matched": "AWS, Docker, Flask, Git, Python, React, REST API, SQL",
             "missing": "",
             "status": "Shortlisted",
@@ -647,9 +747,10 @@ def seed_demo_data():
             "education": "MCA",
             "experience": 2.5,
             "skill_score": 62.5,
+            "semantic_score": 78.4,
             "exp_score": 83.3,
             "edu_score": 100.0,
-            "overall_score": 77.1,
+            "overall_score": 77.3,
             "matched": "Flask, Git, Python, REST API, SQL",
             "missing": "AWS, Docker, React",
             "status": "Under Review",
@@ -664,9 +765,10 @@ def seed_demo_data():
             "education": "BCA",
             "experience": 1.0,
             "skill_score": 25.0,
+            "semantic_score": 38.0,
             "exp_score": 33.3,
             "edu_score": 0.0,
-            "overall_score": 20.8,
+            "overall_score": 24.3,
             "matched": "Git, React",
             "missing": "AWS, Docker, Flask, Python, REST API, SQL",
             "status": "Rejected",
@@ -675,26 +777,29 @@ def seed_demo_data():
     ]
     
     for c in sample_candidates_job1:
-        conn.execute("""
+        conn.execute_insert("""
             INSERT INTO candidates (
-                job_id, name, email, phone, resume_filename, extracted_text,
+                job_id, name, email, phone, resume_filename, resume_blob_url, extracted_text,
                 skills, education, experience, skill_score, experience_score,
-                education_score, overall_score, matched_skills, missing_skills, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                education_score, semantic_score, overall_score, matched_skills, missing_skills, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            job1_id, c["name"], c["email"], c["phone"], c["filename"], c["text"],
+            job1_id, c["name"], c["email"], c["phone"], c["filename"], "", c["text"],
             c["skills"], c["education"], c["experience"], c["skill_score"],
-            c["exp_score"], c["edu_score"], c["overall_score"], c["matched"],
+            c["exp_score"], c["edu_score"], c["semantic_score"], c["overall_score"], c["matched"],
             c["missing"], c["status"]
         ))
         
-    conn.commit()
     conn.close()
     flash("Sample demo jobs & candidates loaded successfully!", "success")
     return redirect(url_for("index"))
 
+
 if __name__ == "__main__":
     init_db()
-    port = int(os.environ.get("PORT", 5000))
-    print(f"[*] AI Resume Screening MVP is running at http://127.0.0.1:{port}")
-    app.run(host="127.0.0.1", port=port, debug=True)
+    port = Config.PORT
+    print(f"[*] AI Resume Screening Platform is running at http://127.0.0.1:{port}")
+    print(f"[*] Cloud Architecture Status:")
+    for k, v in Config.get_cloud_status().items():
+        print(f"    - {k}: {v['label']}")
+    app.run(host="0.0.0.0", port=port, debug=Config.DEBUG)

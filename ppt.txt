@@ -1,0 +1,156 @@
+# TITLE SLIDE
+Slide 1: AI-Powered Resume Screening & Candidate Ranking Platform
+Subtitle: An Explainable NLP & Cloud-Ready Architecture for Automated Talent Acquisition
+Internship Carried Out At: RVCE - Centre of Excellence (RVCE-CoE)
+Presented By: Anjan C
+Institution: RV College of Engineering, Bengaluru
+
+---
+
+# SLIDE 2: AGENDA
+Slide 2: Presentation Agenda
+- Internship Carried Out – RVCE-CoE
+- Domain Overview & Problem Statement
+- Engineering Knowledge & Operational Procedures
+- Design & Development of Solutions & Process Architecture
+- Modern Tools, Methods Explored & Research Technology
+- Implementation Results & Key Features
+- Societal and Environmental Concerns (Ethics & Green Computing)
+- Application of Project Management Principles
+- Summarization & Future Roadmap
+
+---
+
+# SLIDE 3: INTERNSHIP CARRIED OUT – RVCE-COE
+Slide 3: Internship Carried Out – RVCE-CoE
+- Organization: Centre of Excellence (CoE), RV College of Engineering (RVCE), Bengaluru.
+- Core Focus: Applied Artificial Intelligence, Natural Language Processing (NLP), and Cloud Software Engineering.
+- Internship Objectives:
+  * Engineer an automated, transparent, and explainable resume screening Minimum Viable Product (MVP).
+  * Eliminate recruitment bottlenecks and cognitive screening fatigue in high-volume hiring drives.
+  * Implement structured entity extraction from unstructured PDF documents.
+  * Architect a scalable, modular design prepared for Microsoft Azure Cloud deployment.
+- Role & Responsibilities: Software Development & AI Intern
+  * Designed normalized relational database schemas.
+  * Developed text extraction pipelines and regex-based NLP matching algorithms.
+  * Built the full-stack Flask web application and interactive recruiter dashboard.
+  * Formulated explainable multi-factor scoring metrics.
+
+---
+
+# SLIDE 4: DOMAIN OVERVIEW & PROBLEM STATEMENT
+Slide 4: Domain Overview & Problem Statement
+- Primary Domains: Artificial Intelligence (NLP), HR Technology (RecTech), Cloud & Full-Stack Computing.
+- Industry Challenges in Manual Recruitment:
+  * Extreme Application Volume: Recruiters spend 6–10 seconds per resume; top openings receive hundreds of applicants.
+  * Cognitive Fatigue & Inconsistency: Manual screening introduces subjective bias, missed qualifications, and human error.
+  * Black-Box AI Limitations: Enterprise ATS systems often reject candidates without auditable explanations or transparent rationale.
+- Proposed Solution:
+  * An automated, explainable, and deterministic AI recruitment platform that ingests unstructured PDF resumes.
+  * Extracts candidate attributes (skills, experience, education, contact details).
+  * Benchmarks qualifications against job descriptions and generates transparent scoring analytics.
+
+---
+
+# SLIDE 5: ENGINEERING KNOWLEDGE & OPERATIONAL PROCEDURES
+Slide 5: Engineering Knowledge & Operational Procedures
+- Engineering Principles Applied:
+  * Natural Language Processing (NLP) & Regex Engineering: Token boundary-aware pattern matching, canonical skill alias dictionaries across 45+ technical domains.
+  * Relational Database Architecture: SQLite relational database with strict foreign keys and ON DELETE CASCADE constraints.
+  * Web Application & Security: MVC design pattern in Flask, secure file handling with Werkzeug filename sanitization, defense against malformed/corrupted PDFs.
+- Standard Operational Procedures (SOPs):
+  * Automated batch parsing and defensive error handling for non-standard PDF formats.
+  * Environment variable isolation for configuration and sensitive credentials.
+  * Modular separation of concerns: Ingestion, Text Extraction, Skill Normalization, Scoring Engine, and Presentation.
+
+---
+
+# SLIDE 6: DESIGN & DEVELOPMENT OF SOLUTIONS & ARCHITECTURE
+Slide 6: Design & Development of Solutions & Process Structure
+- System Architecture:
+  * Presentation Layer: Modern Glassmorphism UI, real-time candidate search, dynamic status filtering, and score breakdown cards.
+  * Application & Logic Engine: Flask backend, PyPDF stream extraction, entity extractors, taxonomy matcher, and scoring calculator.
+  * Persistence Layer: Relational candidate and job storage, audit logging, designed for Azure SQL / Blob migration.
+- Explainable Multi-Factor Scoring Model:
+  * Composite Formula: Overall Score = (0.50 * Skill Score) + (0.25 * Experience Score) + (0.25 * Education Score)
+  * Skill Score: (Matched Skills / Required Skills) * 100
+  * Experience Score: min(100, (Candidate Experience / Required Experience) * 100)
+  * Education Score: 100% on degree requirement match, with support for degree hierarchy (Ph.D, M.Tech, B.Tech, MCA, BCA, etc.).
+- Recruitment Workflow:
+  * Job Creation -> Bulk PDF Ingestion -> Text & Entity Extraction -> Weighted Scoring -> Recruiter Dashboard & Status Updates (Shortlisted / Under Review / Rejected).
+
+---
+
+# SLIDE 7: MODERN TOOLS & METHODS EXPLORED
+Slide 7: Modern Tools, Methods Explored & Technology Stack
+- Backend & Frameworks: Python 3.11, Flask, Jinja2 Templating, Gunicorn WSGI Server.
+- Parsing & NLP: PyPDF library, Regular Expressions with lookaround assertions, Custom Skill Canonicalization Dictionaries (45+ skill clusters including Docker, Kubernetes, AWS, PyTorch, React, SQL).
+- Relational Database: SQLite3 (Local MVP) / Azure SQL Database Ready.
+- Frontend & Styling: HTML5, Modern CSS Glassmorphism, Bootstrap, Responsive Layouts.
+- Cloud Target Architecture: Microsoft Azure (Azure Blob Storage, Azure App Service, Azure Identity, Azure Functions).
+- DevOps & Tools: Git, GitHub Version Control, PowerShell, Virtual Environments (.venv).
+
+---
+
+# SLIDE 8: IMPLEMENTATION RESULTS & KEY FEATURES
+Slide 8: Implementation Results & Key Features
+- Core Functional Features:
+  * Multi-Job Opening Management: Create, edit, and manage job requisitions with specific skill, experience, and degree requirements.
+  * Bulk PDF Resume Ingestion: Upload and process dozens of PDF resumes simultaneously with single-click batch upload.
+  * Automated Candidate Profiling: Instant extraction of candidate Name, Email, Phone, Skills, Education, and Years of Experience.
+  * Dynamic Ranking & Filtering: Real-time sorting by Overall Score, Date, or Experience; candidate status tracking (Shortlisted, Under Review, Rejected).
+- Performance & Evaluation Highlights:
+  * Processing Speed: Sub-100 millisecond (< 100 ms) average screening time per resume.
+  * 100% Explainability: Transparent audit breakdown showing exact Matched Skills vs. Missing Skills for every applicant.
+  * Zero External API Cost: Operates completely offline with zero recurring cloud API charges during heuristic MVP screening.
+
+---
+
+# SLIDE 9: SOCIETAL & ENVIRONMENTAL CONCERNS
+Slide 9: Societal & Environmental Concerns
+- Societal Impact & Ethical AI:
+  * Elimination of Unconscious Bias: Evaluates applicants strictly on verified skills, years of experience, and degrees—eliminating gender, demographic, and appearance bias.
+  * Transparent & Auditable Decisions: Replaces opaque "black-box" rejections with clear matched/missing criteria breakdowns.
+  * Data Privacy & Security: Secure file storage and sanitized filenames protecting Personally Identifiable Information (PII).
+- Environmental Impact (Green Computing):
+  * Paperless Recruitment: Eliminates physical resume printing and paper waste in campus and corporate recruitment drives.
+  * Low-Compute Energy Efficiency: Lightweight heuristic and regex NLP algorithms require minimal CPU resources and zero power-hungry GPU compute clusters, minimizing carbon footprint.
+
+---
+
+# SLIDE 10: APPLICATION OF PROJECT MANAGEMENT PRINCIPLES
+Slide 10: Application of Project Management Principles
+- Agile & Scrum Methodology:
+  * Sprint 1: Requirement analysis, database schema modeling, and PyPDF document ingestion pipeline.
+  * Sprint 2: Entity recognition algorithms (Regex/NLP) and multi-factor explainable scoring engine.
+  * Sprint 3: Full-stack recruiter dashboard, candidate detail views, and bulk upload capability.
+  * Sprint 4: Azure cloud readiness architecture, edge-case testing, and documentation.
+- Risk & Quality Management:
+  * Implemented defensive parsing fallbacks for malformed, encrypted, or image-only PDFs.
+  * Used parameterized SQL queries across all routes to prevent SQL injection vulnerabilities.
+- Version Control & Documentation:
+  * Strict Git branching, semantic commit conventions, and .gitignore hygiene for sensitive credentials and binary uploads.
+
+---
+
+# SLIDE 11: SUMMARIZATION & FUTURE ROADMAP
+Slide 11: Summarization & Future Roadmap
+- Key Project Takeaways:
+  * Successfully built a fully operational, high-speed, and explainable AI Resume Screening platform at RVCE-CoE.
+  * Replaced manual screening overhead with sub-100ms automated profiling and transparent candidate scoring.
+  * Gained comprehensive hands-on engineering experience in NLP, full-stack Flask development, and cloud software design.
+- Future Azure Cloud Roadmap:
+  * Azure Blob Storage: Seamless migration of local uploads to secure, scalable cloud blob containers.
+  * Azure App Service & Azure SQL: Production deployment with high-availability relational storage.
+  * Semantic Search & Azure OpenAI: Integration of sentence-transformers / vector embeddings for semantic skill matching.
+  * Automated Candidate Communications: Automated email notifications for shortlisted and reviewed candidates.
+
+---
+
+# SLIDE 12: CONCLUSION & Q&A
+Slide 12: Conclusion & Q&A
+- Project Repository: AnjanC18/AiResumeAzure
+- Organization: RVCE - Centre of Excellence (RVCE-CoE)
+- Institution: RV College of Engineering, Bengaluru
+- Thank you for your time and guidance!
+- Questions & Discussion

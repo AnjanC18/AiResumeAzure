@@ -1,6 +1,9 @@
-Flask
-Werkzeug
-pypdf
-gunicorn
-azure-storage-blob
-azure-identity
+Flask>=3.0.0
+Werkzeug>=3.0.0
+pypdf>=4.0.0
+gunicorn>=21.0.0
+azure-storage-blob>=12.19.0
+azure-identity>=1.15.0
+pyodbc>=5.0.0
+openai>=1.0.0
+python-dotenv>=1.0.0
